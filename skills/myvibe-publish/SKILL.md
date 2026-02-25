@@ -233,11 +233,15 @@ This reuses the already-uploaded content and only retries the publish action, av
 After publish script completes, **check the script output** for these messages:
 
 ### Success Message
-Always include the Vibe URL in your response:
+Always include the Vibe URL and an explore prompt in your response:
 ```
 Published successfully!
 🔗 [URL]
+
+🌐 Discover more creative Vibes → {hub}/explore
 ```
+
+The explore URL uses the same `{hub}` base (default `https://www.myvibe.so`). If the user specified a custom `--hub`, use that hub for the explore link.
 
 ### Upgrade Prompt (Important)
 The script prints an upgrade prompt when updating an existing Vibe without version history enabled:
