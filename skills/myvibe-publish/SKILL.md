@@ -43,8 +43,10 @@ Publish web content (HTML file, ZIP archive, or directory) to MyVibe.
 When the user provides an access credential (a string starting with `blocklet-`) in their message, **save it before publishing**:
 
 ```bash
-node {skill_path}/scripts/save-token.mjs --token "<credential>"
+node {skill_path}/scripts/save-token.mjs --token "<credential>" --hub <hub-url>
 ```
+
+The `--hub` parameter specifies which MyVibe hub the credential belongs to. **Always pass `--hub` explicitly** to match the target hub for publishing. If the user specifies a custom hub (via `--hub` in their publish command or message), use that same URL here. Do not rely on the default value.
 
 This persists the credential to `~/.myvibe/` so all future publishes use it automatically. No browser auth will be triggered.
 
