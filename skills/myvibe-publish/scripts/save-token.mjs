@@ -16,6 +16,10 @@ if (!values.token) {
   process.exit(1);
 }
 
+const { validateToken, validateHubUrl } = await import("./utils/constants.mjs");
+validateToken(values.token);
+validateHubUrl(values.hub);
+
 // Reuse existing store logic
 const { createStore } = await import("./utils/store.mjs");
 const { hostname } = new URL(values.hub);
