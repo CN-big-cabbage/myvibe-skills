@@ -6,7 +6,7 @@
   "main": "publish.mjs",
   "scripts": {
     "publish": "node publish.mjs",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -27,6 +27,7 @@
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.4.0",
-    "prettier": "^3.8.1"
+    "prettier": "^3.8.1",
+    "vitest": "^4.1.0"
   }
 }
