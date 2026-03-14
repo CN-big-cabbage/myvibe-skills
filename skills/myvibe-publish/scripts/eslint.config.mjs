@@ -7,7 +7,7 @@ export default [
     ignores: ['**/node_modules/**'],
   },
   {
-    files: ['skills/myvibe-publish/scripts/**/*.mjs'],
+    files: ['**/*.mjs'],
     ...js.configs.recommended,
     languageOptions: {
       ecmaVersion: 2022,
