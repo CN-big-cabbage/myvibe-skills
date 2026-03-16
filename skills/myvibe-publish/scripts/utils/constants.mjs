@@ -75,3 +75,43 @@ export function getScreenshotResultPath(sourcePath) {
   const hash = createHash('md5').update(absolutePath).digest('hex').slice(0, 8)
   return `/tmp/myvibe-screenshot-${hash}.json`
 }
+
+// Structured error codes for UX
+export const ERROR_CODES = {
+  AUTH_REQUIRED: 'AUTH_REQUIRED',
+  AUTH_EXPIRED: 'AUTH_EXPIRED',
+  AUTH_FAILED: 'AUTH_FAILED',
+  UPLOAD_FAILED: 'UPLOAD_FAILED',
+  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  UNSUPPORTED_TYPE: 'UNSUPPORTED_TYPE',
+  CONVERT_FAILED: 'CONVERT_FAILED',
+  CONVERT_TIMEOUT: 'CONVERT_TIMEOUT',
+  PUBLISH_FAILED: 'PUBLISH_FAILED',
+  NETWORK_ERROR: 'NETWORK_ERROR',
+  SERVER_ERROR: 'SERVER_ERROR',
+}
+
+export const ERROR_HINTS = {
+  [ERROR_CODES.AUTH_REQUIRED]: 'Run the publish command to start authorization',
+  [ERROR_CODES.AUTH_EXPIRED]: 'Run the publish command again to re-authorize',
+  [ERROR_CODES.AUTH_FAILED]: 'Check your network connection and try again',
+  [ERROR_CODES.UPLOAD_FAILED]: 'Check network connection. Use --skip-upload --did <DID> to retry',
+  [ERROR_CODES.FILE_NOT_FOUND]: 'Verify the file path exists and is accessible',
+  [ERROR_CODES.FILE_TOO_LARGE]: 'Maximum file size is 500MB. Try optimizing your build output',
+  [ERROR_CODES.UNSUPPORTED_TYPE]: 'Only ZIP and HTML files are supported',
+  [ERROR_CODES.CONVERT_FAILED]: 'Check your project files for errors and try again',
+  [ERROR_CODES.CONVERT_TIMEOUT]: 'Try again later, the server may be busy',
+  [ERROR_CODES.PUBLISH_FAILED]: 'Use --skip-upload --did <DID> to retry the publish step',
+  [ERROR_CODES.NETWORK_ERROR]: 'Check your internet connection and try again',
+  [ERROR_CODES.SERVER_ERROR]: 'The server encountered an error. Try again later',
+}
+
+/**
+ * Get error hint for a given error code
+ * @param {string} code - Error code
+ * @returns {string|undefined}
+ */
+export function getErrorHint(code) {
+  return ERROR_HINTS[code]
+}
