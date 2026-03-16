@@ -125,7 +125,9 @@ export async function getAccessToken(hubUrl, locale = 'en') {
 
     return accessToken
   } catch (error) {
-    const err = new Error('Authorization failed. Possible causes: network issue, timeout (5 minutes), or user cancelled.')
+    const err = new Error(
+      'Authorization failed. Possible causes: network issue, timeout (5 minutes), or user cancelled.'
+    )
     err.errorCode = ERROR_CODES.AUTH_FAILED
     err.cause = error
     throw err

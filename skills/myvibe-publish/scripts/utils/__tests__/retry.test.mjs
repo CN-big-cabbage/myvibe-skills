@@ -10,9 +10,7 @@ describe('retry', () => {
   })
 
   it('should retry on failure and succeed', async () => {
-    const fn = vi.fn()
-      .mockRejectedValueOnce(new Error('fail'))
-      .mockResolvedValue('ok')
+    const fn = vi.fn().mockRejectedValueOnce(new Error('fail')).mockResolvedValue('ok')
     const result = await retry(fn, { maxRetries: 3, baseDelay: 10 })
     expect(result).toBe('ok')
     expect(fn).toHaveBeenCalledTimes(2)
@@ -35,9 +33,7 @@ describe('retry', () => {
   it('should retry 5xx errors', async () => {
     const error5xx = new Error('server error')
     error5xx.status = 500
-    const fn = vi.fn()
-      .mockRejectedValueOnce(error5xx)
-      .mockResolvedValue('ok')
+    const fn = vi.fn().mockRejectedValueOnce(error5xx).mockResolvedValue('ok')
     const result = await retry(fn, { maxRetries: 3, baseDelay: 10 })
     expect(result).toBe('ok')
     expect(fn).toHaveBeenCalledTimes(2)
@@ -45,9 +41,7 @@ describe('retry', () => {
 
   it('should call onRetry callback', async () => {
     const onRetry = vi.fn()
-    const fn = vi.fn()
-      .mockRejectedValueOnce(new Error('fail'))
-      .mockResolvedValue('ok')
+    const fn = vi.fn().mockRejectedValueOnce(new Error('fail')).mockResolvedValue('ok')
     await retry(fn, { maxRetries: 3, baseDelay: 10, onRetry })
     expect(onRetry).toHaveBeenCalledWith(1, expect.any(Error))
   })

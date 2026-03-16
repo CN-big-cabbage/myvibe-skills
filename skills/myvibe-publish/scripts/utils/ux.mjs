@@ -137,7 +137,8 @@ export function createUx() {
             const retryInfo = result.retries ? ` (after ${result.retries} retries)` : ''
             process.stdout.write(chalk.gray(`Phase:  ${result.phase}${retryInfo}\n`))
           }
-          if (result.duration_ms != null) process.stdout.write(chalk.gray(`Time:   ${(result.duration_ms / 1000).toFixed(1)}s\n`))
+          if (result.duration_ms != null)
+            process.stdout.write(chalk.gray(`Time:   ${(result.duration_ms / 1000).toFixed(1)}s\n`))
         }
         process.stdout.write('\n')
       }
