@@ -1,4 +1,7 @@
 import { handleAuthError } from './auth.mjs'
+import { ERROR_CODES } from './constants.mjs'
+import { createUx } from './ux.mjs'
+import { retry } from './retry.mjs'
 
 /**
  * Make an authenticated API request
@@ -9,41 +12,51 @@ import { handleAuthError } from './auth.mjs'
  * @returns {Promise<Object>} - Response data
  */
 export async function apiRequest(url, options, accessToken, hubUrl) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-  })
+  const ux = createUx()
 
-  if (!response.ok) {
-    let errorMessage
-    let errorCode
-    try {
-      const errorData = await response.json()
-      errorMessage = errorData.error || errorData.message || response.statusText
-      errorCode = errorData.code
-    } catch {
-      errorMessage = response.statusText
-    }
+  return retry(
+    async () => {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          ...options.headers,
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      })
 
-    // Handle auth errors specially, but not subscription-related 403s
-    if (response.status === 401 || response.status === 403) {
-      // Don't clear auth for subscription-related errors
-      if (errorCode !== 'PRIVATE_MODE_REQUIRES_SUBSCRIPTION') {
-        await handleAuthError(hubUrl, response.status)
+      if (!response.ok) {
+        let errorMessage
+        let errorCode
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorData.message || response.statusText
+          errorCode = errorData.code
+        } catch {
+          errorMessage = response.statusText
+        }
+
+        // Handle auth errors specially, but not subscription-related 403s
+        if (response.status === 401 || response.status === 403) {
+          if (errorCode !== 'PRIVATE_MODE_REQUIRES_SUBSCRIPTION') {
+            await handleAuthError(hubUrl, response.status)
+          }
+        }
+
+        const error = new Error(errorMessage)
+        error.status = response.status
+        error.code = errorCode
+        error.errorCode = response.status >= 500 ? ERROR_CODES.SERVER_ERROR : ERROR_CODES.NETWORK_ERROR
+        throw error
       }
+
+      return response.json()
+    },
+    {
+      maxRetries: 3,
+      onRetry: (attempt, error) => ux.warn(`API retry ${attempt}/3: ${error.message}`),
     }
-
-    const error = new Error(errorMessage)
-    error.status = response.status
-    error.code = errorCode
-    throw error
-  }
-
-  return response.json()
+  )
 }
 
 /**
@@ -216,6 +229,8 @@ export async function pollConversionStatus(url, accessToken, hubUrl, callbacks, 
     }
   }
 
+  const error = new Error('Conversion timeout')
+  error.errorCode = ERROR_CODES.CONVERT_TIMEOUT
   onError?.('Conversion timeout')
-  throw new Error('Conversion timeout')
+  throw error
 }

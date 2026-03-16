@@ -7,22 +7,31 @@ import chalk from 'chalk'
 import { joinURL } from 'ufo'
 import yaml from 'js-yaml'
 
-import { VIBE_HUB_URL_DEFAULT, API_PATHS, getScreenshotResultPath, isMainModule } from './utils/constants.mjs'
+import {
+  VIBE_HUB_URL_DEFAULT,
+  API_PATHS,
+  ERROR_CODES,
+  getErrorHint,
+  getScreenshotResultPath,
+  isMainModule,
+} from './utils/constants.mjs'
 import { getAccessToken } from './utils/auth.mjs'
 import { getApiBaseUrl } from './utils/blocklet-info.mjs'
 import { apiPatch, apiGet, subscribeToSSE, pollConversionStatus } from './utils/http.mjs'
 import { zipDirectory, getFileInfo } from './utils/zip.mjs'
 import { uploadFile, createVibeFromUrl } from './utils/upload.mjs'
 import { getPublishHistory, savePublishHistory } from './utils/history.mjs'
+import { createUx } from './utils/ux.mjs'
 
 /**
  * Try to read screenshot result from file with retries
  * @param {string} sourcePath - The source path (dir or file) for hash calculation
- * @param {number} maxRetries - Maximum number of retries (default: 10)
- * @param {number} retryDelay - Delay between retries in ms (default: 3000)
+ * @param {Object} ux - UX output instance
+ * @param {number} maxRetries - Maximum number of retries (default: 5)
+ * @param {number} retryDelay - Delay between retries in ms (default: 2000)
  * @returns {Promise<{success: boolean, url?: string, resultPath?: string}>}
  */
-async function readScreenshotResult(sourcePath, maxRetries = 10, retryDelay = 3000) {
+async function readScreenshotResult(sourcePath, ux, maxRetries = 5, retryDelay = 2000) {
   const resultPath = getScreenshotResultPath(sourcePath)
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -32,29 +41,28 @@ async function readScreenshotResult(sourcePath, maxRetries = 10, retryDelay = 30
         const result = JSON.parse(content)
 
         if (result.success && result.url) {
-          console.log(chalk.green(`✓ Screenshot ready: ${result.url}`))
+          ux.success('Screenshot ready: ' + result.url)
           return { ...result, resultPath }
         } else {
           // Screenshot failed, don't retry
-          console.log(chalk.yellow(`Screenshot generation failed: ${result.error || 'Unknown error'}`))
+          ux.warn('Screenshot generation failed: ' + (result.error || 'Unknown error'))
           return { success: false, resultPath }
         }
       }
     } catch (error) {
       // JSON parse error or other issues
-      console.log(chalk.yellow(`Failed to read screenshot result: ${error.message}`))
+      ux.warn('Failed to read screenshot result: ' + error.message)
     }
 
     // File not found, wait and retry (except on last attempt)
     if (attempt < maxRetries) {
-      console.log(
-        chalk.gray(`Screenshot not ready, waiting ${retryDelay / 1000}s... (attempt ${attempt}/${maxRetries})`)
-      )
+      const remainingSeconds = Math.ceil(((maxRetries - attempt) * retryDelay) / 1000)
+      ux.info(`Waiting for screenshot... (${remainingSeconds}s remaining)`)
       await new Promise((resolve) => setTimeout(resolve, retryDelay))
     }
   }
 
-  console.log(chalk.yellow('Screenshot not available, proceeding without cover image'))
+  ux.warn('Screenshot not available, proceeding without cover image')
   return { success: false, resultPath }
 }
 
@@ -62,6 +70,9 @@ async function readScreenshotResult(sourcePath, maxRetries = 10, retryDelay = 30
  * Main publish function
  */
 async function publish(options) {
+  const startTime = Date.now()
+  const ux = createUx()
+
   const {
     file,
     dir,
@@ -99,8 +110,8 @@ async function publish(options) {
       }
     }
 
-    console.log(chalk.bold('\n🚀 MyVibe Publish\n'))
-    console.log(chalk.gray(`Hub: ${hub}`))
+    ux.header('MyVibe Publish')
+    ux.info('Hub: ' + hub)
 
     // Get authorization
     const accessToken = await getAccessToken(hub)
@@ -139,7 +150,7 @@ async function publish(options) {
       }
       did = explicitDid
       needsConversion = false
-      console.log(chalk.cyan(`Skipping upload, using existing DID: ${did}`))
+      ux.step('Skipping upload, using existing DID: ' + did)
     } else if (url) {
       // URL import mode
       const result = await createVibeFromUrl(url, hub, accessToken, {
@@ -190,7 +201,7 @@ async function publish(options) {
 
     // Wait for conversion if needed
     if (needsConversion) {
-      console.log(chalk.cyan('\nWaiting for conversion...'))
+      ux.step('Waiting for conversion...')
 
       const apiBaseUrl = await getApiBaseUrl(hub)
       const streamUrl = joinURL(apiBaseUrl, API_PATHS.CONVERT_STREAM(did))
@@ -200,32 +211,32 @@ async function publish(options) {
         // Try SSE stream first
         await subscribeToSSE(streamUrl, accessToken, hub, {
           onMessage: (message) => {
-            console.log(chalk.gray(`  ${message}`))
+            ux.info(message)
           },
           onProgress: (data) => {
             if (data.message) {
-              console.log(chalk.gray(`  ${data.message}`))
+              ux.info(data.message)
             }
           },
           onCompleted: () => {
-            console.log(chalk.green('\n✅ Conversion completed!'))
+            ux.success('Conversion completed!')
           },
           onError: (error) => {
-            console.log(chalk.red(`\n❌ Conversion error: ${error}`))
+            ux.error(ERROR_CODES.CONVERT_FAILED, error)
           },
         })
       } catch {
         // Fallback to polling if SSE fails
-        console.log(chalk.yellow('SSE connection failed, using polling...'))
+        ux.warn('SSE connection failed, using polling...')
         await pollConversionStatus(statusUrl, accessToken, hub, {
           onProgress: (status) => {
-            console.log(chalk.gray(`  Status: ${status.status}`))
+            ux.info('Status: ' + status.status)
           },
           onCompleted: () => {
-            console.log(chalk.green('\n✅ Conversion completed!'))
+            ux.success('Conversion completed!')
           },
           onError: (error) => {
-            console.log(chalk.red(`\n❌ Conversion error: ${error}`))
+            ux.error(ERROR_CODES.CONVERT_FAILED, error)
           },
         })
       }
@@ -236,8 +247,8 @@ async function publish(options) {
     let finalCoverImage = coverImage
     let screenshotResultPath = null
     if (!finalCoverImage && sourcePath && !url) {
-      console.log(chalk.cyan('\nChecking for screenshot...'))
-      const screenshotResult = await readScreenshotResult(sourcePath)
+      ux.step('Checking for screenshot...')
+      const screenshotResult = await readScreenshotResult(sourcePath, ux)
       screenshotResultPath = screenshotResult.resultPath
       if (screenshotResult.success && screenshotResult.url) {
         finalCoverImage = screenshotResult.url
@@ -245,7 +256,7 @@ async function publish(options) {
     }
 
     // Execute publish action
-    console.log(chalk.cyan('\nPublishing...'))
+    ux.step('Publishing...')
 
     const apiBaseUrl = await getApiBaseUrl(hub)
     const actionUrl = joinURL(apiBaseUrl, API_PATHS.VIBE_ACTION(did))
@@ -269,33 +280,34 @@ async function publish(options) {
     try {
       actionResult = await apiPatch(actionUrl, actionData, accessToken, hub)
     } catch (actionError) {
-      console.error(chalk.red(`\n❌ Publish action failed: ${actionError.message}`))
-      console.error(chalk.yellow(`\n📌 Upload was successful. DID: ${did}`))
-      console.error(chalk.yellow(`To retry the publish action without re-uploading, use --skip-upload --did ${did}`))
-      return {
+      const duration_ms = Date.now() - startTime
+      ux.error(ERROR_CODES.PUBLISH_FAILED, actionError.message, getErrorHint(ERROR_CODES.PUBLISH_FAILED))
+      ux.info(`Upload was successful. DID: ${did}`)
+      ux.summary({
         success: false,
-        error: actionError.message,
+        error_code: ERROR_CODES.PUBLISH_FAILED,
+        message: actionError.message,
+        hint: `Use --skip-upload --did ${did} to retry`,
         did,
-        retryHint: 'skip-upload',
-      }
+        phase: 'publish',
+        duration_ms,
+      })
+      return { success: false, error: actionError.message, did, retryHint: 'skip-upload' }
     }
 
     if (actionResult.success) {
-      console.log(chalk.green.bold('\n✅ Published successfully!\n'))
-
       let vibeUrl = actionResult.contentUrl
       if (!vibeUrl) {
         const vibeInfoUrl = joinURL(apiBaseUrl, API_PATHS.VIBE_INFO(did))
         const vibeInfo = await apiGet(vibeInfoUrl, accessToken, hub)
         vibeUrl = joinURL(hub, vibeInfo.userDid, did)
       }
-      console.log(chalk.cyan(`🔗 ${vibeUrl}\n`))
 
       // Upgrade prompt: updating existing project + version history not enabled
       if (existingDid && versionHistoryEnabled === false) {
         const pricingUrl = joinURL(hub, 'pricing')
-        console.log(chalk.yellow('📦 Previous version overwritten. Want to keep version history?'))
-        console.log(chalk.yellow(`   Upgrade to Creator → ${pricingUrl}\n`))
+        ux.warn('Previous version overwritten. Want to keep version history?')
+        ux.info('Upgrade to Creator: ' + pricingUrl)
       }
 
       // Save publish history for future version updates
@@ -311,7 +323,7 @@ async function publish(options) {
       if (configPath && existsSync(configPath)) {
         try {
           unlinkSync(configPath)
-          console.log(chalk.gray(`Cleaned up config file: ${configPath}`))
+          ux.info(`Cleaned up config file: ${configPath}`)
         } catch {
           // Ignore cleanup errors
         }
@@ -321,26 +333,37 @@ async function publish(options) {
       if (screenshotResultPath && existsSync(screenshotResultPath)) {
         try {
           unlinkSync(screenshotResultPath)
-          console.log(chalk.gray(`Cleaned up screenshot result: ${screenshotResultPath}`))
+          ux.info(`Cleaned up screenshot result: ${screenshotResultPath}`)
         } catch {
           // Ignore cleanup errors
         }
       }
 
-      return {
+      const duration_ms = Date.now() - startTime
+      ux.summary({
         success: true,
         did,
         url: vibeUrl,
-      }
+        title: title || undefined,
+        visibility,
+        duration_ms,
+      })
+
+      return { success: true, did, url: vibeUrl }
     } else {
       throw new Error(actionResult.error || 'Publish action failed')
     }
   } catch (error) {
-    console.error(chalk.red(`\n❌ Error: ${error.message}\n`))
-    return {
+    const duration_ms = Date.now() - startTime
+    const errorCode = error.errorCode || ERROR_CODES.NETWORK_ERROR
+    ux.summary({
       success: false,
-      error: error.message,
-    }
+      error_code: errorCode,
+      message: error.message,
+      hint: getErrorHint(errorCode),
+      duration_ms,
+    })
+    return { success: false, error: error.message }
   } finally {
     // Cleanup temp files
     if (cleanup) {
@@ -534,7 +557,7 @@ function parseArgs(args) {
 }
 
 /**
- * Print help message
+ * Print help message (uses chalk directly for static output)
  */
 function printHelp() {
   console.log(`
@@ -618,7 +641,8 @@ if (isMainModule(import.meta.url)) {
       const result = await publish(options)
       process.exit(result.success ? 0 : 1)
     } catch (error) {
-      console.error(chalk.red(`Fatal error: ${error.message}`))
+      const ux = createUx()
+      ux.error('FATAL', error.message)
       process.exit(1)
     }
   })()
