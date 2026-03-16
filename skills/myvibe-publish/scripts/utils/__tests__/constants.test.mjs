@@ -24,6 +24,22 @@ describe('error codes', () => {
     expect(ERROR_HINTS[ERROR_CODES.FILE_TOO_LARGE]).toBeDefined()
   })
 
+  it('should export git-related error codes', () => {
+    expect(ERROR_CODES.GIT_CLONE_FAILED).toBe('GIT_CLONE_FAILED')
+    expect(ERROR_CODES.GIT_AUTH_FAILED).toBe('GIT_AUTH_FAILED')
+    expect(ERROR_CODES.GIT_NOT_FOUND).toBe('GIT_NOT_FOUND')
+    expect(ERROR_CODES.INVALID_REPO_URL).toBe('INVALID_REPO_URL')
+    expect(ERROR_CODES.SUBDIR_NOT_FOUND).toBe('SUBDIR_NOT_FOUND')
+  })
+
+  it('should have hints for git error codes', () => {
+    expect(ERROR_HINTS[ERROR_CODES.GIT_CLONE_FAILED]).toBeDefined()
+    expect(ERROR_HINTS[ERROR_CODES.GIT_AUTH_FAILED]).toBeDefined()
+    expect(ERROR_HINTS[ERROR_CODES.GIT_NOT_FOUND]).toBeDefined()
+    expect(ERROR_HINTS[ERROR_CODES.INVALID_REPO_URL]).toBeDefined()
+    expect(ERROR_HINTS[ERROR_CODES.SUBDIR_NOT_FOUND]).toBeDefined()
+  })
+
   it('getErrorHint should return hint for known code', () => {
     expect(getErrorHint('UPLOAD_FAILED')).toContain('network')
   })

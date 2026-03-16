@@ -90,6 +90,11 @@ export const ERROR_CODES = {
   PUBLISH_FAILED: 'PUBLISH_FAILED',
   NETWORK_ERROR: 'NETWORK_ERROR',
   SERVER_ERROR: 'SERVER_ERROR',
+  GIT_CLONE_FAILED: 'GIT_CLONE_FAILED',
+  GIT_AUTH_FAILED: 'GIT_AUTH_FAILED',
+  GIT_NOT_FOUND: 'GIT_NOT_FOUND',
+  INVALID_REPO_URL: 'INVALID_REPO_URL',
+  SUBDIR_NOT_FOUND: 'SUBDIR_NOT_FOUND',
 }
 
 export const ERROR_HINTS = {
@@ -105,6 +110,11 @@ export const ERROR_HINTS = {
   [ERROR_CODES.PUBLISH_FAILED]: 'Use --skip-upload --did <DID> to retry the publish step',
   [ERROR_CODES.NETWORK_ERROR]: 'Check your internet connection and try again',
   [ERROR_CODES.SERVER_ERROR]: 'The server encountered an error. Try again later',
+  [ERROR_CODES.GIT_CLONE_FAILED]: 'Check the repository URL and your network connection',
+  [ERROR_CODES.GIT_AUTH_FAILED]: 'For private repos, use --git-token or configure SSH keys',
+  [ERROR_CODES.GIT_NOT_FOUND]: 'Git is not installed. Install git and try again',
+  [ERROR_CODES.INVALID_REPO_URL]: 'Provide a valid HTTPS or SSH git URL',
+  [ERROR_CODES.SUBDIR_NOT_FOUND]: 'The --path subdirectory does not exist in the repository',
 }
 
 /**
