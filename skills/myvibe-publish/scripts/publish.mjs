@@ -73,10 +73,14 @@ async function publish(options) {
   const startTime = Date.now()
   const ux = createUx()
 
-  const {
+  let {
     file,
     dir,
     url,
+    repo,
+    branch,
+    path: repoPath,
+    gitToken,
     hub = VIBE_HUB_URL_DEFAULT,
     title,
     desc,
@@ -97,11 +101,25 @@ async function publish(options) {
   } = options
 
   let cleanup = null
+  let repoCleanup = null
 
   try {
+    // Handle repo source: clone first, then treat as dir
+    if (repo) {
+      const { cloneRepo } = await import('./utils/clone-repo.mjs')
+      const cloneResult = await cloneRepo({
+        repo,
+        branch,
+        path: repoPath,
+        gitToken,
+      })
+      dir = cloneResult.clonePath
+      repoCleanup = cloneResult.cleanup
+    }
+
     // Validate input
     if (!skipUpload) {
-      const inputCount = [file, dir, url].filter(Boolean).length
+      const inputCount = [file, dir, url, repo].filter(Boolean).length
       if (inputCount === 0) {
         throw new Error('Please provide one of: --file, --dir, or --url')
       }
@@ -369,6 +387,9 @@ async function publish(options) {
     if (cleanup) {
       await cleanup()
     }
+    if (repoCleanup) {
+      await repoCleanup()
+    }
   }
 }
 
@@ -388,6 +409,11 @@ function parseConfig(config) {
       options.file = config.source.path
     } else if (config.source.type === 'url') {
       options.url = config.source.path
+    } else if (config.source.type === 'repo') {
+      options.repo = config.source.url
+      if (config.source.branch) options.branch = config.source.branch
+      if (config.source.path) options.path = config.source.path
+      if (config.source.gitToken) options.gitToken = config.source.gitToken
     }
     // Optional explicit DID for version update
     if (config.source.did) {
@@ -537,6 +563,25 @@ function parseArgs(args) {
         options.did = nextArg
         i++
         break
+      case '--repo':
+      case '-r':
+        options.repo = nextArg
+        i++
+        break
+      case '--branch':
+      case '-b':
+        options.branch = nextArg
+        i++
+        break
+      case '--path':
+      case '-p':
+        options.path = nextArg
+        i++
+        break
+      case '--git-token':
+        options.gitToken = nextArg
+        i++
+        break
       case '--new':
         options.newVibe = true
         break
@@ -580,6 +625,10 @@ ${chalk.bold('Options:')}
   --visibility, -v <vis>  Visibility: public or private (default: public)
   --did <did>             Vibe DID for version update (overrides auto-detection)
   --new                   Force create new Vibe, ignore publish history
+  --repo, -r <url>        Git repository URL to clone and publish
+  --branch, -b <ref>      Branch, tag, or commit (default: repo default)
+  --path, -p <subdir>     Subdirectory within repo (for monorepos)
+  --git-token <token>     Token for HTTPS clone of private repos
   --skip-upload           Skip file upload, retry publish action only (requires --did)
   --help                  Show this help message
 
@@ -615,6 +664,12 @@ ${chalk.bold('Examples:')}
 
   # Import from URL
   node publish.mjs --url https://example.com/app
+
+  # Publish from Git repo
+  node publish.mjs --repo https://github.com/user/project
+
+  # Publish from Git repo with branch and subdirectory
+  node publish.mjs --repo https://github.com/user/project --branch v2.0 --path packages/web
 `)
 }
 
