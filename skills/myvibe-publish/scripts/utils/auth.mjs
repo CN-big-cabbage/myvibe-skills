@@ -1,11 +1,11 @@
-import chalk from 'chalk'
 import open from 'open'
 import { joinURL } from 'ufo'
 import { createConnect } from '@aigne/cli/utils/aigne-hub/credential.js'
 
 import { createStore } from './store.mjs'
-import { WELLKNOWN_SERVICE_PATH, AUTH_RETRY_COUNT, AUTH_FETCH_INTERVAL } from './constants.mjs'
+import { WELLKNOWN_SERVICE_PATH, AUTH_RETRY_COUNT, AUTH_FETCH_INTERVAL, ERROR_CODES } from './constants.mjs'
 import { getApiBaseUrl } from './blocklet-info.mjs'
+import { createUx } from './ux.mjs'
 
 const TOKEN_KEY = 'MYVIBE_ACCESS_TOKEN'
 
@@ -15,6 +15,7 @@ const TOKEN_KEY = 'MYVIBE_ACCESS_TOKEN'
  * @returns {Promise<string|null>} - The cached access token or null
  */
 export async function getCachedAccessToken(hubUrl) {
+  const ux = createUx()
   const { hostname } = new URL(hubUrl)
   const store = await createStore()
 
@@ -27,7 +28,7 @@ export async function getCachedAccessToken(hubUrl) {
       const storeItem = await store.getItem(hostname)
       accessToken = storeItem?.[TOKEN_KEY]
     } catch (error) {
-      console.warn('Could not read stored token:', error.message)
+      ux.warn('Could not read stored token: ' + error.message)
     }
   }
 
@@ -40,13 +41,14 @@ export async function getCachedAccessToken(hubUrl) {
  * @param {string} token - The access token to save
  */
 async function saveAccessToken(hubUrl, token) {
+  const ux = createUx()
   const { hostname } = new URL(hubUrl)
   const store = await createStore()
 
   try {
     await store.setItem(hostname, { [TOKEN_KEY]: token })
   } catch (error) {
-    console.warn('Could not save token:', error.message)
+    ux.warn('Could not save token: ' + error.message)
   }
 }
 
@@ -55,14 +57,15 @@ async function saveAccessToken(hubUrl, token) {
  * @param {string} hubUrl - The MyVibe URL
  */
 export async function clearAccessToken(hubUrl) {
+  const ux = createUx()
   const { hostname } = new URL(hubUrl)
   const store = await createStore()
 
   try {
     await store.clearHost(hostname)
-    console.log(chalk.yellow(`Cleared authorization for ${hostname}`))
+    ux.warn(`Cleared authorization for ${hostname}`)
   } catch (error) {
-    console.warn('Could not clear token:', error.message)
+    ux.warn('Could not clear token: ' + error.message)
   }
 }
 
@@ -73,6 +76,8 @@ export async function clearAccessToken(hubUrl) {
  * @returns {Promise<string>} - The access token
  */
 export async function getAccessToken(hubUrl, locale = 'en') {
+  const ux = createUx()
+
   // Check for cached token first
   let accessToken = await getCachedAccessToken(hubUrl)
   if (accessToken) {
@@ -83,7 +88,7 @@ export async function getAccessToken(hubUrl, locale = 'en') {
   const apiBaseUrl = await getApiBaseUrl(hubUrl)
   const connectUrl = joinURL(apiBaseUrl, WELLKNOWN_SERVICE_PATH)
 
-  console.log(chalk.cyan('\nAuthorization required for MyVibe...'))
+  ux.step('Authorization required for MyVibe...')
 
   try {
     const result = await createConnect({
@@ -106,11 +111,8 @@ export async function getAccessToken(hubUrl, locale = 'en') {
         const connectUrl = url.toString()
         open(connectUrl)
 
-        console.log(
-          chalk.cyan('\n🔗 Please open the following URL in your browser to authorize:'),
-          chalk.underline(connectUrl),
-          '\n'
-        )
+        ux.step('Please open the following URL in your browser to authorize:')
+        ux.info(connectUrl)
       },
     })
 
@@ -119,21 +121,14 @@ export async function getAccessToken(hubUrl, locale = 'en') {
     // Save token for future use
     await saveAccessToken(hubUrl, accessToken)
 
-    console.log(chalk.green('✅ Authorization successful!\n'))
+    ux.success('Authorization successful!')
 
     return accessToken
   } catch (error) {
-    throw new Error(
-      `${chalk.red('Authorization failed.')}\n\n` +
-        `${chalk.bold('Possible causes:')}\n` +
-        `  • Network issue\n` +
-        `  • Authorization timeout (5 minutes)\n` +
-        `  • User cancelled authorization\n\n` +
-        `${chalk.bold('Solutions:')}\n` +
-        `  1. Try again with the publish command\n` +
-        `  2. Get a ready-to-use prompt from: ${hubUrl.replace(/\/$/, '')}/openclaw\n`,
-      { cause: error }
-    )
+    const err = new Error('Authorization failed. Possible causes: network issue, timeout (5 minutes), or user cancelled.')
+    err.errorCode = ERROR_CODES.AUTH_FAILED
+    err.cause = error
+    throw err
   }
 }
 
@@ -144,10 +139,11 @@ export async function getAccessToken(hubUrl, locale = 'en') {
  * @param {number} statusCode - HTTP status code
  */
 export async function handleAuthError(hubUrl, statusCode) {
+  const ux = createUx()
   if (statusCode === 401 || statusCode === 403) {
-    console.log(chalk.yellow(`\n⚠️ Authorization error (${statusCode}). Clearing saved token...`))
+    ux.warn(`Authorization error (${statusCode}). Clearing saved token...`)
     await clearAccessToken(hubUrl)
-    console.log(chalk.cyan('Please run the publish command again to re-authorize.\n'))
+    ux.step('Please run the publish command again to re-authorize.')
   }
 }
 
