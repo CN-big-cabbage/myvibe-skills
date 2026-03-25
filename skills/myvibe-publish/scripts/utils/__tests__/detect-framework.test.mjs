@@ -18,6 +18,8 @@ const cases = [
     expected: {
       projectClass: 'buildable',
       framework: 'vite',
+      evidence: ['vite.config.ts'],
+      likelyOutputs: ['dist'],
     },
   },
   {
@@ -34,6 +36,8 @@ const cases = [
     expected: {
       projectClass: 'buildable',
       framework: 'vite',
+      evidence: ['dependency:vite', 'script:build', 'file:index.html'],
+      likelyOutputs: ['dist'],
     },
   },
   {
@@ -46,10 +50,12 @@ const cases = [
     expected: {
       projectClass: 'buildable',
       framework: 'nextjs',
+      evidence: ['next.config.mjs'],
+      likelyOutputs: ['out'],
     },
   },
   {
-    name: 'treats .next output as Next.js evidence but not publishable pre-built output',
+    name: 'uses .next as supporting Next.js evidence but not publishable pre-built output',
     fixture: {
       files: [],
       directories: ['.next'],
@@ -61,6 +67,8 @@ const cases = [
     expected: {
       projectClass: 'buildable',
       framework: 'nextjs',
+      evidence: ['dependency:next', 'directory:.next'],
+      likelyOutputs: ['out'],
     },
   },
   {
@@ -73,6 +81,8 @@ const cases = [
     expected: {
       projectClass: 'buildable',
       framework: 'astro',
+      evidence: ['astro.config.ts'],
+      likelyOutputs: ['dist'],
     },
   },
   {
@@ -85,6 +95,8 @@ const cases = [
     expected: {
       projectClass: 'buildable',
       framework: 'nuxt',
+      evidence: ['nuxt.config.ts'],
+      likelyOutputs: ['.output/public'],
     },
   },
   {
@@ -100,6 +112,8 @@ const cases = [
     expected: {
       projectClass: 'pre-built',
       framework: 'nuxt',
+      evidence: ['dependency:nuxt', 'file:.output/public/index.html'],
+      likelyOutputs: ['.output/public'],
     },
   },
   {
@@ -115,6 +129,8 @@ const cases = [
     expected: {
       projectClass: 'buildable',
       framework: 'unknown-buildable',
+      evidence: ['script:build'],
+      likelyOutputs: [],
     },
   },
   {
@@ -127,6 +143,8 @@ const cases = [
     expected: {
       projectClass: 'static',
       framework: null,
+      evidence: ['file:index.html'],
+      likelyOutputs: [],
     },
   },
   {
@@ -139,6 +157,36 @@ const cases = [
     expected: {
       projectClass: 'pre-built',
       framework: null,
+      evidence: ['file:build-output/index.html'],
+      likelyOutputs: [],
+    },
+  },
+  {
+    name: 'does not treat public/index.html as generic pre-built output',
+    fixture: {
+      files: ['public/index.html'],
+      directories: ['public'],
+      packageJson: { ...basePackageJson },
+    },
+    expected: {
+      projectClass: 'unknown',
+      framework: null,
+      evidence: [],
+      likelyOutputs: [],
+    },
+  },
+  {
+    name: 'does not treat nested package.json files as monorepo without workspace signals',
+    fixture: {
+      files: ['examples/demo/package.json', 'vite.config.ts'],
+      directories: ['examples', 'examples/demo'],
+      packageJson: { ...basePackageJson },
+    },
+    expected: {
+      projectClass: 'buildable',
+      framework: 'vite',
+      evidence: ['vite.config.ts'],
+      likelyOutputs: ['dist'],
     },
   },
   {
@@ -154,6 +202,8 @@ const cases = [
     expected: {
       projectClass: 'monorepo',
       framework: null,
+      evidence: ['workspace'],
+      likelyOutputs: [],
     },
   },
 ]

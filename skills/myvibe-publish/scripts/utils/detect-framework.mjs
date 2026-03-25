@@ -2,7 +2,7 @@ const VITE_CONFIG_FILES = new Set(['vite.config.js', 'vite.config.mjs', 'vite.co
 const NEXT_CONFIG_FILES = new Set(['next.config.js', 'next.config.mjs', 'next.config.ts', 'next.config.cjs'])
 const ASTRO_CONFIG_FILES = new Set(['astro.config.js', 'astro.config.mjs', 'astro.config.ts', 'astro.config.cjs'])
 const NUXT_CONFIG_FILES = new Set(['nuxt.config.js', 'nuxt.config.mjs', 'nuxt.config.ts', 'nuxt.config.cjs'])
-const STATIC_OUTPUT_DIRECTORIES = new Set(['dist', 'build', 'out', 'public', 'build-output'])
+const STATIC_OUTPUT_DIRECTORIES = new Set(['dist', 'build', 'out', 'build-output'])
 
 function hasFile(files, target) {
   return files.has(target)
@@ -10,6 +10,10 @@ function hasFile(files, target) {
 
 function hasAnyFile(files, targets) {
   return targets.some((target) => files.has(target))
+}
+
+function hasDirectory(directories, target) {
+  return directories.has(target)
 }
 
 function hasDependency(packageJson, dependencyName) {
@@ -27,16 +31,6 @@ function hasWorkspaceSignal(project, packageJson) {
     Array.isArray(packageJson.workspaces) ||
     Object.prototype.hasOwnProperty.call(packageJson, 'workspaces')
   )
-}
-
-function hasNestedPackageJson(files) {
-  for (const file of files) {
-    if (file !== 'package.json' && file.endsWith('/package.json')) {
-      return true
-    }
-  }
-
-  return false
 }
 
 function getStaticOutputIndexFiles(files) {
@@ -72,65 +66,103 @@ export function normalizePackageJson(pkg = {}) {
 
 export function detectFrameworkEvidence(project = {}) {
   const files = new Set(Array.isArray(project.files) ? project.files : [])
+  const directories = new Set(Array.isArray(project.directories) ? project.directories : [])
   const packageJson = normalizePackageJson(project.packageJson)
+  const hasRootIndexHtml = hasFile(files, 'index.html')
 
-  const frameworks = [
-    {
+  for (const configFile of NEXT_CONFIG_FILES) {
+    if (hasFile(files, configFile)) {
+      return { framework: 'nextjs', evidence: [configFile], likelyOutputs: ['out'] }
+    }
+  }
+
+  if (hasDependency(packageJson, 'next')) {
+    const evidence = ['dependency:next']
+    if (hasDirectory(directories, '.next')) {
+      evidence.push('directory:.next')
+    }
+
+    return { framework: 'nextjs', evidence, likelyOutputs: ['out'] }
+  }
+
+  for (const configFile of ASTRO_CONFIG_FILES) {
+    if (hasFile(files, configFile)) {
+      return { framework: 'astro', evidence: [configFile], likelyOutputs: ['dist'] }
+    }
+  }
+
+  if (hasDependency(packageJson, 'astro')) {
+    return { framework: 'astro', evidence: ['dependency:astro'], likelyOutputs: ['dist'] }
+  }
+
+  for (const configFile of NUXT_CONFIG_FILES) {
+    if (hasFile(files, configFile)) {
+      return { framework: 'nuxt', evidence: [configFile], likelyOutputs: ['.output/public'] }
+    }
+  }
+
+  if (hasDependency(packageJson, 'nuxt')) {
+    return { framework: 'nuxt', evidence: ['dependency:nuxt'], likelyOutputs: ['.output/public'] }
+  }
+
+  for (const configFile of VITE_CONFIG_FILES) {
+    if (hasFile(files, configFile)) {
+      return { framework: 'vite', evidence: [configFile], likelyOutputs: ['dist'] }
+    }
+  }
+
+  if (hasDependency(packageJson, 'vite') && hasBuildScript(packageJson) && hasRootIndexHtml) {
+    return {
       framework: 'vite',
-      matches:
-        hasAnyFile(files, [...VITE_CONFIG_FILES]) ||
-        hasDependency(packageJson, 'vite') ||
-        (hasBuildScript(packageJson) && hasDependency(packageJson, 'vite') && hasFile(files, 'index.html')),
-    },
-    {
-      framework: 'nextjs',
-      matches: hasAnyFile(files, [...NEXT_CONFIG_FILES]) || hasDependency(packageJson, 'next'),
-    },
-    {
-      framework: 'astro',
-      matches: hasAnyFile(files, [...ASTRO_CONFIG_FILES]) || hasDependency(packageJson, 'astro'),
-    },
-    {
-      framework: 'nuxt',
-      matches: hasAnyFile(files, [...NUXT_CONFIG_FILES]) || hasDependency(packageJson, 'nuxt'),
-    },
-  ]
+      evidence: ['dependency:vite', 'script:build', 'file:index.html'],
+      likelyOutputs: ['dist'],
+    }
+  }
 
-  return frameworks.find((candidate) => candidate.matches)?.framework ?? null
+  return null
 }
 
 export function detectProjectType(project = {}) {
   const files = new Set(Array.isArray(project.files) ? project.files : [])
   const packageJson = normalizePackageJson(project.packageJson)
 
-  if (hasWorkspaceSignal(project, packageJson) || hasNestedPackageJson(files)) {
+  if (hasWorkspaceSignal(project, packageJson)) {
     return {
       projectClass: 'monorepo',
       framework: null,
+      evidence: ['workspace'],
+      likelyOutputs: [],
     }
   }
 
-  const framework = detectFrameworkEvidence(project)
+  const frameworkEvidence = detectFrameworkEvidence(project)
   const staticOutputIndexFiles = getStaticOutputIndexFiles(files)
+  const staticOutputEvidence = staticOutputIndexFiles.map((file) => `file:${file}`)
 
-  if (framework === 'nuxt' && staticOutputIndexFiles.length > 0) {
+  if (frameworkEvidence?.framework === 'nuxt' && staticOutputIndexFiles.length > 0) {
     return {
       projectClass: 'pre-built',
-      framework,
+      framework: frameworkEvidence.framework,
+      evidence: [...frameworkEvidence.evidence, ...staticOutputEvidence],
+      likelyOutputs: [...frameworkEvidence.likelyOutputs],
     }
   }
 
-  if (framework === 'nextjs' && staticOutputIndexFiles.some((file) => file.startsWith('out/'))) {
+  if (frameworkEvidence?.framework === 'nextjs' && staticOutputIndexFiles.some((file) => file.startsWith('out/'))) {
     return {
       projectClass: 'pre-built',
-      framework,
+      framework: frameworkEvidence.framework,
+      evidence: [...frameworkEvidence.evidence, ...staticOutputEvidence],
+      likelyOutputs: [...frameworkEvidence.likelyOutputs],
     }
   }
 
-  if (framework) {
+  if (frameworkEvidence) {
     return {
       projectClass: 'buildable',
-      framework,
+      framework: frameworkEvidence.framework,
+      evidence: [...frameworkEvidence.evidence],
+      likelyOutputs: [...frameworkEvidence.likelyOutputs],
     }
   }
 
@@ -138,6 +170,8 @@ export function detectProjectType(project = {}) {
     return {
       projectClass: 'buildable',
       framework: 'unknown-buildable',
+      evidence: ['script:build'],
+      likelyOutputs: [],
     }
   }
 
@@ -145,6 +179,8 @@ export function detectProjectType(project = {}) {
     return {
       projectClass: 'static',
       framework: null,
+      evidence: ['file:index.html'],
+      likelyOutputs: [],
     }
   }
 
@@ -152,11 +188,15 @@ export function detectProjectType(project = {}) {
     return {
       projectClass: 'pre-built',
       framework: null,
+      evidence: [...staticOutputEvidence],
+      likelyOutputs: [],
     }
   }
 
   return {
     projectClass: 'unknown',
     framework: null,
+    evidence: [],
+    likelyOutputs: [],
   }
 }
