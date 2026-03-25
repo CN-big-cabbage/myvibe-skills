@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+
 import { detectProjectType } from '../detect-framework.mjs'
+import { inspectAndDetectProjectType, inspectProjectDirectory } from '../project-inspection.mjs'
 
 const basePackageJson = {
   scripts: {},
@@ -215,4 +220,190 @@ describe('detectProjectType', () => {
       expect(result).toStrictEqual(expected)
     })
   }
+})
+
+async function createProjectFixture(structure) {
+  const rootDir = await mkdtemp(join(tmpdir(), 'myvibe-detect-framework-'))
+
+  for (const [relativePath, contents] of Object.entries(structure)) {
+    const targetPath = join(rootDir, relativePath)
+    await mkdir(dirname(targetPath), { recursive: true })
+    await writeFile(targetPath, contents)
+  }
+
+  return rootDir
+}
+
+describe('inspectProjectDirectory', () => {
+  it('collects the root package metadata and filesystem signals needed by the detector', async () => {
+    const projectDir = await createProjectFixture({
+      'package.json': JSON.stringify({
+        name: 'demo',
+        scripts: { build: 'vite build' },
+        devDependencies: { vite: '^6.0.0' },
+      }),
+      'vite.config.ts': 'export default {}',
+      'src/main.ts': 'console.log("hi")',
+    })
+
+    try {
+      const project = await inspectProjectDirectory(projectDir)
+      expect(project).toStrictEqual({
+        files: ['vite.config.ts'],
+        directories: [],
+        packageJson: {
+          scripts: { build: 'vite build' },
+          dependencies: {},
+          devDependencies: { vite: '^6.0.0' },
+        },
+        hasWorkspaceConfig: false,
+        packageJsonCount: 1,
+      })
+    } finally {
+      await rm(projectDir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('inspectAndDetectProjectType', () => {
+  it('refines a selected single-app Vite project to the Vite framework', async () => {
+    const projectDir = await createProjectFixture({
+      'package.json': JSON.stringify({
+        name: 'demo',
+        scripts: { build: 'vite build' },
+        devDependencies: { vite: '^6.0.0' },
+      }),
+      'index.html': '<!doctype html>',
+    })
+
+    try {
+      await expect(inspectAndDetectProjectType(projectDir)).resolves.toStrictEqual({
+        projectClass: 'buildable',
+        framework: 'vite',
+        evidence: ['dependency:vite', 'script:build', 'file:index.html'],
+        likelyOutputs: ['dist'],
+      })
+    } finally {
+      await rm(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('refines a selected single-app Next.js project to the Next.js framework', async () => {
+    const projectDir = await createProjectFixture({
+      'package.json': JSON.stringify({
+        name: 'demo',
+        dependencies: { next: '^15.0.0' },
+      }),
+      'next.config.mjs': 'export default {}',
+      '.next/BUILD_ID': 'build-id',
+    })
+
+    try {
+      await expect(inspectAndDetectProjectType(projectDir)).resolves.toStrictEqual({
+        projectClass: 'buildable',
+        framework: 'nextjs',
+        evidence: ['next.config.mjs'],
+        likelyOutputs: ['out'],
+      })
+    } finally {
+      await rm(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps the monorepo outer level as monorepo', async () => {
+    const projectDir = await createProjectFixture({
+      'package.json': JSON.stringify({
+        name: 'workspace-root',
+        workspaces: ['apps/*'],
+      }),
+      'apps/web/package.json': JSON.stringify({
+        name: 'web',
+        scripts: { build: 'vite build' },
+        devDependencies: { vite: '^6.0.0' },
+      }),
+      'apps/docs/package.json': JSON.stringify({
+        name: 'docs',
+        dependencies: { next: '^15.0.0' },
+      }),
+    })
+
+    try {
+      await expect(inspectAndDetectProjectType(projectDir)).resolves.toStrictEqual({
+        projectClass: 'monorepo',
+        framework: null,
+        evidence: ['workspace'],
+        likelyOutputs: [],
+      })
+    } finally {
+      await rm(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('can re-evaluate a selected monorepo app through the same helper after selection', async () => {
+    const projectDir = await createProjectFixture({
+      'package.json': JSON.stringify({
+        name: 'workspace-root',
+        workspaces: ['apps/*'],
+      }),
+      'apps/web/package.json': JSON.stringify({
+        name: 'web',
+        scripts: { build: 'vite build' },
+        devDependencies: { vite: '^6.0.0' },
+      }),
+      'apps/web/vite.config.ts': 'export default {}',
+    })
+
+    try {
+      await expect(inspectAndDetectProjectType(join(projectDir, 'apps/web'))).resolves.toStrictEqual({
+        projectClass: 'buildable',
+        framework: 'vite',
+        evidence: ['vite.config.ts'],
+        likelyOutputs: ['dist'],
+      })
+    } finally {
+      await rm(projectDir, { recursive: true, force: true })
+    }
+  })
+
+  it('preserves non-target flows for static, pre-built, and unknown buildable projects', async () => {
+    const staticDir = await createProjectFixture({
+      'index.html': '<!doctype html>',
+    })
+    const preBuiltDir = await createProjectFixture({
+      'build-output/index.html': '<!doctype html>',
+    })
+    const unknownBuildableDir = await createProjectFixture({
+      'package.json': JSON.stringify({
+        name: 'custom-build',
+        scripts: { build: 'node scripts/build.mjs' },
+      }),
+    })
+
+    try {
+      await expect(inspectAndDetectProjectType(staticDir)).resolves.toStrictEqual({
+        projectClass: 'static',
+        framework: null,
+        evidence: ['file:index.html'],
+        likelyOutputs: [],
+      })
+      await expect(inspectAndDetectProjectType(preBuiltDir)).resolves.toStrictEqual({
+        projectClass: 'pre-built',
+        framework: null,
+        evidence: ['file:build-output/index.html'],
+        likelyOutputs: [],
+      })
+      await expect(inspectAndDetectProjectType(unknownBuildableDir)).resolves.toStrictEqual({
+        projectClass: 'buildable',
+        framework: 'unknown-buildable',
+        evidence: ['script:build'],
+        likelyOutputs: [],
+      })
+    } finally {
+      await Promise.all([
+        rm(staticDir, { recursive: true, force: true }),
+        rm(preBuiltDir, { recursive: true, force: true }),
+        rm(unknownBuildableDir, { recursive: true, force: true }),
+      ])
+    }
+  })
 })
