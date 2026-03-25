@@ -8,10 +8,6 @@ function hasFile(files, target) {
   return files.has(target)
 }
 
-function hasAnyFile(files, targets) {
-  return targets.some((target) => files.has(target))
-}
-
 function hasDirectory(directories, target) {
   return directories.has(target)
 }
