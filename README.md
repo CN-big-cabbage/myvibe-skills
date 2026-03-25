@@ -172,7 +172,7 @@ npm test
 npm run format
 ```
 
-Design documents now live under `docs/superpowers/specs/` and implementation plans live under `docs/superpowers/plans/`. Older mixed planning notes still exist under `docs/plans/` for historical reference.
+See [docs/README.md](./docs/README.md) for the current planning and design document conventions.
 
 ## Contributing
 
