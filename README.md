@@ -159,6 +159,21 @@ The skill auto-detects buildable projects (Vite, Next.js, Astro, etc.) and promp
 
 </details>
 
+## Maintainer Workflow
+
+Repository maintenance happens from the root, but the publish skill implementation stays under `skills/myvibe-publish/scripts/`. The root `package.json` is a maintainer shell that installs dependencies there and exposes shared entry points for verification and formatting.
+
+Use these commands from the repository root:
+
+```bash
+npm install
+npm run lint
+npm test
+npm run format
+```
+
+Design documents now live under `docs/superpowers/specs/` and implementation plans live under `docs/superpowers/plans/`. Older mixed planning notes still exist under `docs/plans/` for historical reference.
+
 ## Contributing
 
 Contributions are welcome! Please open an [issue](https://github.com/ArcBlock/myvibe-skills/issues) or submit a pull request.
