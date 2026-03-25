@@ -9,3 +9,19 @@ CLAUDE.md
 .claude/
 
 .worktrees/
+
+# Repository maintenance outputs
+/.cache/
+/.npm/
+/.nyc_output/
+/.eslintcache
+/.vite/
+/.parcel-cache/
+/coverage/
+/dist/
+/build/
+/*.tsbuildinfo
+/npm-debug.log*
+/pnpm-debug.log*
+/yarn-debug.log*
+/yarn-error.log*
